@@ -23,3 +23,7 @@ spring:
 
 build:
   version: "local-fallback"
+eureka:
+  client:
+    service-url:
+      defaultZone: http://localhost:8070/eureka/
