@@ -2,13 +2,13 @@ package com.microDemo.Accounts.controller;
 
 import com.microDemo.Accounts.constants.AccountsConstants;
 import com.microDemo.Accounts.dto.AccountsContactInfoDto;
-import com.microDemo.Accounts.dto.AccountsDto;
 import com.microDemo.Accounts.dto.CustomerDto;
 import com.microDemo.Accounts.dto.ResponceDto;
+import com.microDemo.Accounts.dto.CustomerDetailsDto;
 import com.microDemo.Accounts.service.IAccountsService;
+import com.microDemo.Accounts.service.ICustomerDetailsService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Pattern;
-import lombok.AllArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
@@ -25,8 +25,12 @@ import org.springframework.core.env.Environment;
 public class AccountsController {
 
     private IAccountsService iAccountsService;
-    public AccountsController(IAccountsService iAccountsService) {
+    private ICustomerDetailsService customerDetailsService;
+
+    public AccountsController(IAccountsService iAccountsService,
+                              ICustomerDetailsService customerDetailsService) {
         this.iAccountsService = iAccountsService;
+        this.customerDetailsService = customerDetailsService;
     }
     @Value("${build.version}")
     private String version;
@@ -51,6 +55,17 @@ public class AccountsController {
                                                         String mobileNumber) {
         CustomerDto customerDto = iAccountsService.fetchAccount(mobileNumber);
         return ResponseEntity.ok(customerDto);
+    }
+
+    /**
+     * Aggregates account (local) + loan + card data via Feign clients registered with Eureka
+     * as {@code loans} and {@code cards}.
+     */
+    @GetMapping("/customer-details")
+    public ResponseEntity<CustomerDetailsDto> getCustomerDetails(@RequestParam("mobileNumber")
+                                                                     @Pattern(regexp = "(^$|[0-9]{10})", message = "Number must be 10 digits")
+                                                                     String mobileNumber) {
+        return ResponseEntity.ok(customerDetailsService.getCustomerDetails(mobileNumber));
     }
 
     @PutMapping("/update")
