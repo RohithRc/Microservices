@@ -1,0 +1,175 @@
+# Microservices stack — start order: config-server → eureka-server → apps → gateway
+#
+# Builds each service with Maven inside Docker (no local mvn package required).
+# First run downloads dependencies: can take several minutes.
+#
+# From repo root:
+#   docker compose up --build
+#
+# URLs (host): Eureka http://localhost:8070  Config http://localhost:8071
+#   Accounts 8080  Cards 9000  Loans 8090  Gateway 8072
+# Example via gateway: http://localhost:8072/accounts/api/account?mobileNumber=...
+
+services:
+  config-server:
+    build:
+      context: ./config-server
+      dockerfile: ../docker/maven-build.Dockerfile
+    container_name: config-server
+    ports:
+      - "8071:8071"
+    environment:
+      SERVER_PORT: "8071"
+      # Use classpath config from the JAR (no Git clone inside Docker)
+      SPRING_APPLICATION_JSON: |
+        {
+          "spring": {
+            "profiles": { "active": "native" },
+            "cloud": {
+              "config": {
+                "server": {
+                  "native": {
+                    "search-locations": "classpath:/config"
+                  }
+                }
+              }
+            }
+          }
+        }
+      MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: health,info
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8071/actuator/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 6
+      start_period: 90s
+
+  eureka-server:
+    build:
+      context: ./Eureka-Server
+      dockerfile: ../docker/maven-build.Dockerfile
+    container_name: eureka-server
+    ports:
+      - "8070:8070"
+    depends_on:
+      config-server:
+        condition: service_healthy
+    environment:
+      SERVER_PORT: "8070"
+      SPRING_CONFIG_IMPORT: optional:configserver:http://config-server:8071/
+      SPRING_APPLICATION_JSON: |
+        {
+          "eureka": {
+            "client": {
+              "registerWithEureka": false,
+              "fetchRegistry": false
+            }
+          }
+        }
+      MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: health,info
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8070/actuator/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 6
+      start_period: 120s
+
+  accounts:
+    build:
+      context: ./Accounts
+      dockerfile: ../docker/maven-build.Dockerfile
+    container_name: accounts
+    ports:
+      - "8080:8080"
+    depends_on:
+      eureka-server:
+        condition: service_healthy
+      config-server:
+        condition: service_healthy
+    environment:
+      SPRING_CONFIG_IMPORT: optional:configserver:http://config-server:8071/
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8070/eureka/
+      EUREKA_INSTANCE_PREFER_IP_ADDRESS: "true"
+      MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: health,info
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/actuator/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 120s
+
+  cards:
+    build:
+      context: ./Cards
+      dockerfile: ../docker/maven-build.Dockerfile
+    container_name: cards
+    ports:
+      - "9000:9000"
+    depends_on:
+      eureka-server:
+        condition: service_healthy
+      config-server:
+        condition: service_healthy
+    environment:
+      SPRING_CONFIG_IMPORT: optional:configserver:http://config-server:8071/
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8070/eureka/
+      EUREKA_INSTANCE_PREFER_IP_ADDRESS: "true"
+      MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: health,info
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:9000/actuator/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 120s
+
+  loans:
+    build:
+      context: ./loans
+      dockerfile: ../docker/maven-build.Dockerfile
+    container_name: loans
+    ports:
+      - "8090:8090"
+    depends_on:
+      eureka-server:
+        condition: service_healthy
+      config-server:
+        condition: service_healthy
+    environment:
+      SPRING_CONFIG_IMPORT: optional:configserver:http://config-server:8071/
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8070/eureka/
+      EUREKA_INSTANCE_PREFER_IP_ADDRESS: "true"
+      MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: health,info
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8090/actuator/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 120s
+
+  gateway:
+    build:
+      context: ./gateway
+      dockerfile: ../docker/maven-build.Dockerfile
+    container_name: gateway
+    ports:
+      - "8072:8072"
+    depends_on:
+      accounts:
+        condition: service_healthy
+      cards:
+        condition: service_healthy
+      loans:
+        condition: service_healthy
+      eureka-server:
+        condition: service_healthy
+    environment:
+      SPRING_CONFIG_IMPORT: optional:configserver:http://config-server:8071/
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8070/eureka/
+      EUREKA_INSTANCE_PREFER_IP_ADDRESS: "true"
+      MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: health,info,gateway
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8072/actuator/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 6
+      start_period: 120s

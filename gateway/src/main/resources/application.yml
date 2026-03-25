@@ -25,6 +25,14 @@ spring:
             - Path=/loans/**
           filters:
             - StripPrefix=1
+        # Browser hit on http://gateway:8072/ alone → otherwise SCG returns 404 (no route).
+        # Swagger UI lives on each service; through the gateway use /accounts/… , /cards/… , /loans/…
+        - id: root-redirect
+          uri: http://localhost
+          predicates:
+            - Path=/
+          filters:
+            - RedirectTo=302, /accounts/swagger-ui/index.html
 
 eureka:
   client:
